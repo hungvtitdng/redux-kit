@@ -19,44 +19,106 @@ Raw ESM, no build step. Peer deps (your app must already have them):
 
 ## Install
 
+The repo *is* the registry. Install a version by pointing at its git tag:
+
 ```bash
-yarn add "git+ssh://git@github.com/hungvtitdng/redux-kit.git#v0.1.0"
+yarn add "github:hungvtitdng/redux-kit#v0.1.0"
 ```
 
-Two things yarn 1 will not do for you:
+Your `package.json` then reads like any other dependency — the key is the package
+name, the value is the version you pinned:
 
-- **Peer deps are not installed.** Add them yourself if the app lacks any.
-- **Git deps are pinned by commit in `yarn.lock`.** Always publish a new
-  immutable tag (`v0.1.1`) instead of moving `v0.1.0`, then
+```json
+"dependencies": {
+  "redux-kit": "github:hungvtitdng/redux-kit#v0.1.0"
+}
+```
+
+and the import is just the name:
+
+```js
+import { createKit } from "redux-kit"
+```
+
+### Version forms yarn accepts
+
+| value | meaning |
+|---|---|
+| `#v0.1.0` | exactly that tag — reproducible, never moves |
+| `#semver:^0.1.0` | newest tag matching the range (`v0.1.3` wins over `v0.2.0`) |
+| `#semver:~0.1.0` | newest patch of 0.1.x |
+| `#main` | tip of the branch — fine for local trials, never for CI |
+
+`#semver:` is the closest thing to a registry range: `yarn upgrade redux-kit`
+re-resolves it to the newest matching tag with no `package.json` edit. Exact tags
+need the edit, but can never surprise you.
+
+### Public vs private repo
+
+| repo | value to use | needs |
+|---|---|---|
+| public | `github:hungvtitdng/redux-kit#v0.1.0` | nothing |
+| private | `git+ssh://git@github.com/hungvtitdng/redux-kit.git#v0.1.0` | SSH key on the machine; a deploy key in CI; `ssh-agent` forwarding or a mounted key in Docker |
+
+For a private repo in Docker, pass the key as a build secret — never `COPY` it:
+
+```dockerfile
+RUN --mount=type=ssh yarn install --frozen-lockfile
+```
+
+### Two things to know
+
+- **Peer deps are never installed for you.** The app must already have `axios`,
+  `redux`, `react-redux`, `redux-saga`, `immer`, `react`.
+- **`yarn.lock` pins the resolved commit**, so a tag must be immutable: publish
+  `v0.1.1`, never move `v0.1.0`. A consumer moves forward with
   `yarn upgrade redux-kit`.
 
-`workspace:*` is not an alternative: it only resolves to a folder inside the
-*same* repo, and yarn 1 does not understand the protocol at all — it queries the
-registry and 404s.
-
 <details>
-<summary>Publishing to a registry instead (when semver ranges start to matter)</summary>
+<summary>Later, if you want <code>yarn add redux-kit@0.1.0</code> from a registry</summary>
 
-Git tags cannot be resolved by a range: every consumer pins one tag by hand.
-Once that hurts, publish the tarball — `npm pack` produces a clean 13 kB /
-18 file artifact:
+That form needs a published package. The bare name `redux-kit` is taken on npm
+(`redux-kit@0.0.9`), so publish under a scope — rename to
+`@hungvtitdng/redux-kit`, then `npm publish --access public` (public, free) or
+add `"publishConfig": { "registry": "https://npm.pkg.github.com" }` and publish
+to GitHub Packages (private, and every consumer needs an `.npmrc` with a
+`read:packages` token). Nothing else in this package changes.
+</details>
+
+## Publishing a version
+
+There is nothing to compile. The package ships ESM source and Vite, webpack 5,
+Rollup and bun consume it directly — that is why it has no build step, no
+`dist/`, and no bundler dependency. A git install copies the whole repo, so the
+`files` field only matters if you ever publish a tarball.
+
+Releasing is three commands:
 
 ```bash
-npm publish   # the bare name `redux-kit` must still be free on the target registry
+yarn test                                    # 13 checks, must be green
+# bump "version" in package.json to match the tag you are about to create
+git commit -am "release: v0.1.1"
+git tag v0.1.1 && git push origin main --tags
 ```
 
-with `.npmrc` in the consuming app for a self-hosted/proxy registry:
+Keep `package.json` version and the tag name in lockstep — `#semver:` ranges
+match against tag names, and a mismatch makes consumers install something whose
+reported version lies.
 
+<details>
+<summary>If a consumer's toolchain cannot eat ESM source</summary>
+
+Webpack 4, CRA 4, `require()` from CommonJS or Jest without ESM support will
+choke on raw ESM. Only then add a build — one dev dependency, no config file:
+
+```json
+"scripts": { "prepare": "esbuild src/index.js --bundle --format=cjs --packages=external --outfile=dist/index.cjs" },
+"main": "./dist/index.cjs",
+"exports": { ".": { "import": "./src/index.js", "require": "./dist/index.cjs" } }
 ```
-registry=https://<registry-host>/
-//<registry-host>/:_authToken=${NPM_TOKEN}
-```
 
-Then the dependency becomes a normal range: `"redux-kit": "^0.1.0"`.
-
-Publishing under a scope (`@your-org/redux-kit`) avoids fighting for the bare
-name and lets one `.npmrc` line route just that scope — rename in
-`package.json`, then point every import at the new name.
+yarn runs `prepare` for git dependencies, so consumers get `dist/` built at
+install time and `dist/` stays out of the repo. Do not add this pre-emptively.
 </details>
 
 ## Folder layout to create in your app
@@ -396,11 +458,4 @@ yarn test
 error matrix, CRUD end-to-end (dispatch → api → saga → reducer), operations with
 their own loading flag and hooks, error paths, and two stores staying independent.
 
-Release:
-
-```bash
-# bump "version" in package.json first
-git commit -am "release: v0.1.1"
-git tag v0.1.1
-git push origin main --tags
-```
+Cutting a release is described under [Publishing a version](#publishing-a-version).
