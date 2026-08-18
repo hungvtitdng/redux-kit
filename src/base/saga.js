@@ -1,4 +1,4 @@
-import { all, call, put, takeEvery } from "redux-saga/effects"
+import { all, call, put, takeEvery } from "redux-saga/effects";
 
 /**
  * Base Saga Factory
@@ -11,76 +11,91 @@ import { all, call, put, takeEvery } from "redux-saga/effects"
  * throw on the undefined return value.
  */
 function* runHook(hook, ...args) {
-  if (typeof hook !== "function") return
-  const result = hook(...args)
+  if (typeof hook !== "function") return;
+  const result = hook(...args);
   if (result && typeof result[Symbol.iterator] === "function") {
-    yield* result
+    yield* result;
   }
 }
 
-const createBaseSaga = (constants, actions, api, allActions = [], operations = []) => {
-  const sagas = []
+const createBaseSaga = (
+  constants,
+  actions,
+  api,
+  allActions = [],
+  operations = [],
+) => {
+  const sagas = [];
 
-  const operationsByName = {}
+  const operationsByName = {};
   operations.forEach((operation) => {
-    operationsByName[operation.name] = operation
-  })
+    operationsByName[operation.name] = operation;
+  });
 
   allActions.forEach((actionConfig) => {
-    const actionName = actionConfig.name
-    const actionNameUpper = actionName.toUpperCase()
-    const apiMethod = actionConfig.apiName || actionConfig.name
-    const operation = operationsByName[actionName]
+    const actionName = actionConfig.name;
+    const actionNameUpper = actionName.toUpperCase();
+    const apiMethod = actionConfig.apiName || actionConfig.name;
+    const operation = operationsByName[actionName];
 
     function* actionSaga(payload) {
       try {
-        yield* runHook(operation?.saga?.before, payload, actions)
+        yield* runHook(operation?.saga?.before, payload, actions);
 
-        const apiFunction = api[apiMethod]
+        const apiFunction = api[apiMethod];
         if (!apiFunction) {
-          throw new Error(`API method "${apiMethod}" not found`)
+          throw new Error(`API method "${apiMethod}" not found`);
         }
 
-        let res
-        const payloadConfig = actionConfig.payload
-        if (payloadConfig !== undefined && payloadConfig !== null && payloadConfig !== "") {
+        let res;
+        const payloadConfig = actionConfig.payload;
+        if (
+          payloadConfig !== undefined &&
+          payloadConfig !== null &&
+          payloadConfig !== ""
+        ) {
           // Supports both "id, params" and ["id", "params"]
           const paramNames = Array.isArray(payloadConfig)
             ? payloadConfig
-            : payloadConfig.split(",").map((name) => name.trim())
+            : payloadConfig.split(",").map((name) => name.trim());
 
-          const apiParams = []
+          const apiParams = [];
           paramNames.forEach((paramName) => {
-            const value = paramName === "formData" || paramName === "data"
-              ? payload.formData || payload.data
-              : payload[paramName]
+            const value =
+              paramName === "formData" || paramName === "data"
+                ? payload.formData || payload.data
+                : payload[paramName];
 
-            if (value !== undefined) apiParams.push(value)
-          })
+            if (value !== undefined) apiParams.push(value);
+          });
 
-          res = apiParams.length > 0
-            ? yield call(apiFunction, ...apiParams)
-            : yield call(apiFunction)
+          res =
+            apiParams.length > 0
+              ? yield call(apiFunction, ...apiParams)
+              : yield call(apiFunction);
         } else {
-          res = yield call(apiFunction)
+          res = yield call(apiFunction);
         }
 
-        const successData = res ?? {}
-        yield put(actions[`${actionName}SuccessAction`](successData))
+        const successData = res ?? {};
+        yield put(actions[`${actionName}SuccessAction`](successData));
 
-        yield* runHook(operation?.saga?.after, successData, payload, actions)
+        yield* runHook(operation?.saga?.after, successData, payload, actions);
       } catch (error) {
-        yield* runHook(operation?.saga?.error, error, payload, actions)
-        yield put(actions.handleErrorAction(error))
+        yield* runHook(operation?.saga?.error, error, payload, actions);
+        yield put(actions.handleErrorAction(error));
       }
     }
 
-    sagas.push({ constant: constants[`${actionNameUpper}_REQUEST`], saga: actionSaga })
-  })
+    sagas.push({
+      constant: constants[`${actionNameUpper}_REQUEST`],
+      saga: actionSaga,
+    });
+  });
 
   return function* rootSaga() {
-    yield all(sagas.map(({ constant, saga }) => takeEvery(constant, saga)))
-  }
-}
+    yield all(sagas.map(({ constant, saga }) => takeEvery(constant, saga)));
+  };
+};
 
-export default createBaseSaga
+export default createBaseSaga;

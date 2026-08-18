@@ -1,6 +1,6 @@
-import { createStore, applyMiddleware, compose } from "redux"
-import createSagaMiddleware from "redux-saga"
-import { buildRootReducer } from "./rootReducer.js"
+import { createStore, applyMiddleware, compose } from "redux";
+import createSagaMiddleware from "redux-saga";
+import { buildRootReducer } from "./rootReducer.js";
 
 /**
  * Create the redux store with saga middleware and the injection registries.
@@ -23,26 +23,30 @@ export const configureStore = ({
   enhancers = [],
   devTools = process.env.NODE_ENV !== "production",
 } = {}) => {
-  const sagaMiddleware = createSagaMiddleware()
+  const sagaMiddleware = createSagaMiddleware();
 
-  const composeEnhancers = devTools
-    && typeof window === "object"
-    && window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__
-    ? window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__({})
-    : compose
+  const composeEnhancers =
+    devTools &&
+    typeof window === "object" &&
+    window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__
+      ? window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__({})
+      : compose;
 
   const store = createStore(
     buildRootReducer(staticReducers),
     initialState,
-    composeEnhancers(applyMiddleware(sagaMiddleware, ...middleware), ...enhancers),
-  )
+    composeEnhancers(
+      applyMiddleware(sagaMiddleware, ...middleware),
+      ...enhancers,
+    ),
+  );
 
-  store.runSaga = sagaMiddleware.run
-  store.staticReducers = staticReducers
-  store.injectedReducers = {}
-  store.injectedSagas = {}
+  store.runSaga = sagaMiddleware.run;
+  store.staticReducers = staticReducers;
+  store.injectedReducers = {};
+  store.injectedSagas = {};
 
-  return store
-}
+  return store;
+};
 
-export default configureStore
+export default configureStore;

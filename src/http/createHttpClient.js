@@ -1,5 +1,5 @@
-import axios from "axios"
-import { createErrorHandler, startsWithAny } from "./errorHandler.js"
+import axios from "axios";
+import { createErrorHandler, startsWithAny } from "./errorHandler.js";
 
 /**
  * HTTP client factory (port of src/services/httpRequest.jsx).
@@ -38,34 +38,33 @@ export const createHttpClient = ({
   messages,
   ...axiosOptions
 } = {}) => {
-  const client = axios.create({ baseURL, headers, ...axiosOptions })
+  const client = axios.create({ baseURL, headers, ...axiosOptions });
 
   client.interceptors.request.use((config) => {
-    const token = getToken()
+    const token = getToken();
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-      const locale = getLocale()
-      if (locale) config.headers.Localization = locale
+      config.headers.Authorization = `Bearer ${token}`;
+      const locale = getLocale();
+      if (locale) config.headers.Localization = locale;
     }
 
-    return config
-  })
+    return config;
+  });
 
-  client.interceptors.response.use(
-    (response) => {
-      const url = response.config?.url || ""
-      const silent = silentSuccessPaths.includes(url) || startsWithAny(url, silentSuccessSubPaths)
+  client.interceptors.response.use((response) => {
+    const url = response.config?.url || "";
+    const silent =
+      silentSuccessPaths.includes(url) ||
+      startsWithAny(url, silentSuccessSubPaths);
 
-      if (!silent && response.data?.message) {
-        notifySuccess(response.data.message)
-      }
+    if (!silent && response.data?.message) {
+      notifySuccess(response.data.message);
+    }
 
-      return response.data
-    },
-    createErrorHandler({ notifyError, onUnauthorized, silentNotFoundPaths, silentNotFoundSubPaths, messages }),
-  )
+    return response.data;
+  }, createErrorHandler({ notifyError, onUnauthorized, silentNotFoundPaths, silentNotFoundSubPaths, messages }));
 
-  return client
-}
+  return client;
+};
 
-export default createHttpClient
+export default createHttpClient;

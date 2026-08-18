@@ -1,4 +1,4 @@
-# redux-kit
+# @hungvt/redux-kit
 
 The request stack of a React app as one installable package: HTTP client, CRUD
 API factory, redux + saga store factory, and the request hook. Declare a module
@@ -20,43 +20,96 @@ Raw ESM, no build step. Peer deps (your app must already have them):
 ## Install
 
 ```bash
-yarn add "git+ssh://git@github.com/hungvtitdng/redux-kit.git#v0.1.0"
+yarn add @hungvt/redux-kit
 ```
 
-Two things yarn 1 will not do for you:
+Same shape as any other dependency — a name and a semver range:
 
-- **Peer deps are not installed.** Add them yourself if the app lacks any.
-- **Git deps are pinned by commit in `yarn.lock`.** Always publish a new
-  immutable tag (`v0.1.1`) instead of moving `v0.1.0`, then
-  `yarn upgrade redux-kit`.
+```json
+"dependencies": {
+  "@hungvt/redux-kit": "^0.1.0"
+}
+```
 
-`workspace:*` is not an alternative: it only resolves to a folder inside the
-*same* repo, and yarn 1 does not understand the protocol at all — it queries the
-registry and 404s.
+```js
+import { createKit, configureStore } from "@hungvt/redux-kit"
+```
+
+Published public on npmjs, so consumers need nothing else: no `.npmrc`, no token,
+no SSH key — it installs in CI and in a Docker build like `dayjs` does. `^0.1.0`
+picks up every later 0.1.x automatically; `yarn upgrade @hungvt/redux-kit`
+moves within the range.
+
+The name is scoped because the bare `redux-kit` is taken on npm
+(`redux-kit@0.0.9`). npm only accepts a publish to `@hungvt` if that scope is your
+npm username, or an org you belong to — orgs are free for public packages, create
+one at npmjs.com/org/create if the username differs. The GitHub repo
+(`hungvtitdng/redux-kit`) is unrelated to the npm scope.
+
+**Peer deps are never installed for you** — the app must already have `axios`,
+`redux`, `react-redux`, `redux-saga`, `immer`, `react`.
 
 <details>
-<summary>Publishing to a registry instead (when semver ranges start to matter)</summary>
-
-Git tags cannot be resolved by a range: every consumer pins one tag by hand.
-Once that hurts, publish the tarball — `npm pack` produces a clean 13 kB /
-18 file artifact:
+<summary>Installing straight from git instead (no publish)</summary>
 
 ```bash
-npm publish   # the bare name `redux-kit` must still be free on the target registry
+yarn add "github:hungvtitdng/redux-kit#v0.1.0"          # exact tag
+yarn add "github:hungvtitdng/redux-kit#semver:^0.1.0"   # newest matching tag
 ```
 
-with `.npmrc` in the consuming app for a self-hosted/proxy registry:
+Works with zero registry setup, and `#semver:` even resolves ranges against tags,
+but `yarn.lock` pins a commit hash and a private repo needs SSH keys everywhere
+(`--mount=type=ssh` in Docker). Prefer the registry once the package is published.
+</details>
 
+## Publishing a version
+
+There is nothing to compile. The package ships ESM source and Vite, webpack 5,
+Rollup and bun consume it directly — no build step, no `dist/`, no bundler
+dependency. `files` keeps the tarball to `src/` + README (18 files, ~15 kB).
+
+First time:
+
+```bash
+npm login          # once per machine; the npm account must own the @hungvt scope
+npm publish        # publishConfig.access is already "public"; prepublishOnly runs the tests
 ```
-registry=https://<registry-host>/
-//<registry-host>/:_authToken=${NPM_TOKEN}
+
+Every release after that:
+
+```bash
+# 1. bump "version" in package.json — patch = fix, minor = new option, major = breaking
+git commit -am "release: v0.1.1"
+git tag v0.1.1 && git push origin main --tags
+npm publish
 ```
 
-Then the dependency becomes a normal range: `"redux-kit": "^0.1.0"`.
+Keep the git tag and the published version identical — the tag is what lets
+someone read the exact source of a release. A published version is immutable:
+never republish a number, bump instead. `npm unpublish` only works within 72
+hours and breaks anyone who already installed it.
 
-Publishing under a scope (`@your-org/redux-kit`) avoids fighting for the bare
-name and lets one `.npmrc` line route just that scope — rename in
-`package.json`, then point every import at the new name.
+Dry runs before the real thing:
+
+```bash
+yarn test                # 13 checks
+npm pack --dry-run       # exactly what would be uploaded
+```
+
+<details>
+<summary>If a consumer's toolchain cannot eat ESM source</summary>
+
+Webpack 4, CRA 4, `require()` from CommonJS or Jest without ESM support will
+choke on raw ESM. Only then add a build — one dev dependency, no config file:
+
+```json
+"scripts": { "prepublishOnly": "yarn test && esbuild src/index.js --bundle --format=cjs --packages=external --outfile=dist/index.cjs" },
+"main": "./dist/index.cjs",
+"exports": { ".": { "import": "./src/index.js", "require": "./dist/index.cjs" } },
+"files": ["src", "dist", "README.md"]
+```
+
+Do not add this pre-emptively.
 </details>
 
 ## Folder layout to create in your app
@@ -104,7 +157,7 @@ Paths below use relative imports. If your app has a path alias (`@app/...`,
 ## 1. `src/store/kit.js` — configure once
 
 ```js
-import { createKit } from "redux-kit"
+import { createKit } from "@hungvt/redux-kit"
 
 export const { http, createBaseStore, createUseRequest, createBaseApi } = createKit({
   baseURL: API_URL,
@@ -127,7 +180,7 @@ notified and rejected with the server payload. Already have an axios instance?
 ## 2. `src/store/index.js` — the store
 
 ```js
-import { configureStore } from "redux-kit"
+import { configureStore } from "@hungvt/redux-kit"
 
 export const store = configureStore({
   // reducers your app owns: router, persisted slices, hand-written ones
@@ -396,11 +449,4 @@ yarn test
 error matrix, CRUD end-to-end (dispatch → api → saga → reducer), operations with
 their own loading flag and hooks, error paths, and two stores staying independent.
 
-Release:
-
-```bash
-# bump "version" in package.json first
-git commit -am "release: v0.1.1"
-git tag v0.1.1
-git push origin main --tags
-```
+Cutting a release is described under [Publishing a version](#publishing-a-version).

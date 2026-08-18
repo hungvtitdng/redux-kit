@@ -1,7 +1,7 @@
-import createHttpClient from "./http/createHttpClient.js"
-import createBaseApiWithHttp from "./createBaseApi.js"
-import { createBaseStore as createBaseStoreWithHttp } from "./base/index.js"
-import { createUseRequest } from "./createUseRequest.js"
+import createHttpClient from "./http/createHttpClient.js";
+import createBaseApiWithHttp from "./createBaseApi.js";
+import { createBaseStore as createBaseStoreWithHttp } from "./base/index.js";
+import { createUseRequest } from "./createUseRequest.js";
 
 /**
  * Bind the kit to one HTTP client so modules don't repeat it.
@@ -21,14 +21,16 @@ import { createUseRequest } from "./createUseRequest.js"
  * })
  */
 export const createKit = ({ http, ...httpOptions } = {}) => {
-  const client = http || createHttpClient(httpOptions)
+  const client = http || createHttpClient(httpOptions);
 
   return {
     http: client,
-    createBaseApi: (endpoint, customMethods) => createBaseApiWithHttp(client, endpoint, customMethods),
-    createBaseStore: (config) => createBaseStoreWithHttp({ http: client, ...config }),
+    createBaseApi: (endpoint, customMethods) =>
+      createBaseApiWithHttp(client, endpoint, customMethods),
+    createBaseStore: (config) =>
+      createBaseStoreWithHttp({ http: client, ...config }),
     createUseRequest,
-  }
-}
+  };
+};
 
-export default createKit
+export default createKit;

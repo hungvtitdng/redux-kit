@@ -20,20 +20,20 @@ function checkStore(store) {
     && isObject(store.injectedSagas)
 
   if (!valid) {
-    throw new Error("redux-kit: expected a store created by configureStore()")
+    throw new Error("@hungvt/redux-kit: expected a store created by configureStore()")
   }
 }
 
 const checkKey = (key) => {
   if (typeof key !== "string" || key.length === 0) {
-    throw new Error("redux-kit: injector expected `key` to be a non-empty string")
+    throw new Error("@hungvt/redux-kit: injector expected `key` to be a non-empty string")
   }
 }
 
 export function injectReducer(store, key, reducer) {
   checkKey(key)
   if (!isFunction(reducer)) {
-    throw new Error(`redux-kit: injectReducer("${key}") expected a reducer function`)
+    throw new Error(`@hungvt/redux-kit: injectReducer("${key}") expected a reducer function`)
   }
 
   // Same key + same reducer: nothing to do (also makes hot reload a no-op)
@@ -46,10 +46,10 @@ export function injectReducer(store, key, reducer) {
 export function injectSaga(store, key, { saga, mode = DAEMON } = {}, args) {
   checkKey(key)
   if (!isFunction(saga)) {
-    throw new Error(`redux-kit: injectSaga("${key}") expected a saga function`)
+    throw new Error(`@hungvt/redux-kit: injectSaga("${key}") expected a saga function`)
   }
   if (!allowedModes.includes(mode)) {
-    throw new Error(`redux-kit: injectSaga("${key}") got an unknown mode "${mode}"`)
+    throw new Error(`@hungvt/redux-kit: injectSaga("${key}") got an unknown mode "${mode}"`)
   }
 
   let hasSaga = Object.prototype.hasOwnProperty.call(store.injectedSagas, key)

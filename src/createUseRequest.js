@@ -1,8 +1,14 @@
-import { useDispatch } from "react-redux"
-import { bindActionCreators } from "redux"
-import { useInjectReducer, useInjectSaga } from "./injectors.js"
+import { useDispatch } from "react-redux";
+import { bindActionCreators } from "redux";
+import { useInjectReducer, useInjectSaga } from "./injectors.js";
 
-const BASE_ACTION_NAMES = ["getList", "create", "getDetail", "update", "delete"]
+const BASE_ACTION_NAMES = [
+  "getList",
+  "create",
+  "getDetail",
+  "update",
+  "delete",
+];
 
 /**
  * Base Request Hook Factory
@@ -21,53 +27,67 @@ const BASE_ACTION_NAMES = ["getList", "create", "getDetail", "update", "delete"]
  * //    plus one method per operation (exportTransactionRequest, ...)
  */
 export const createUseRequest = (name, store, customMethods = {}) => {
-  const nameCapitalized = name.charAt(0).toUpperCase() + name.slice(1)
+  const nameCapitalized = name.charAt(0).toUpperCase() + name.slice(1);
 
   return function useModuleRequest() {
-    useInjectReducer({ key: name, reducer: store.reducer })
-    useInjectSaga({ key: name, saga: store.saga })
+    useInjectReducer({ key: name, reducer: store.reducer });
+    useInjectSaga({ key: name, saga: store.saga });
 
-    const dispatch = useDispatch()
-    const actions = bindActionCreators(store.actions, dispatch)
+    const dispatch = useDispatch();
+    const actions = bindActionCreators(store.actions, dispatch);
 
     const baseMethods = {
-      [`setData${nameCapitalized}Request`]: (params) => actions.setDataAction(params),
-      [`getList${nameCapitalized}Request`]: (params) => actions.getListAction({ params }),
-      [`getDetail${nameCapitalized}Request`]: (id, params) => actions.getDetailAction({ id, params }),
-      [`create${nameCapitalized}Request`]: (data) => actions.createAction({ formData: data }),
-      [`update${nameCapitalized}Request`]: (id, data) => actions.updateAction({ id, formData: data }),
+      [`setData${nameCapitalized}Request`]: (params) =>
+        actions.setDataAction(params),
+      [`getList${nameCapitalized}Request`]: (params) =>
+        actions.getListAction({ params }),
+      [`getDetail${nameCapitalized}Request`]: (id, params) =>
+        actions.getDetailAction({ id, params }),
+      [`create${nameCapitalized}Request`]: (data) =>
+        actions.createAction({ formData: data }),
+      [`update${nameCapitalized}Request`]: (id, data) =>
+        actions.updateAction({ id, formData: data }),
       [`delete${nameCapitalized}Request`]: (id) => actions.deleteAction({ id }),
-    }
+    };
 
     // One method per non-base action: exportTransactionRequest, getSummaryStorageHistoryRequest, ...
-    const customActionMethods = {}
-    ;(store.allActions || []).forEach(({ name: actionName }) => {
-      if (BASE_ACTION_NAMES.includes(actionName)) return
+    const customActionMethods = {};
+    (store.allActions || []).forEach(({ name: actionName }) => {
+      if (BASE_ACTION_NAMES.includes(actionName)) return;
 
-      customActionMethods[`${actionName}${nameCapitalized}Request`] = (payload) => {
-        const actionCreator = actions[`${actionName}Action`]
+      customActionMethods[`${actionName}${nameCapitalized}Request`] = (
+        payload,
+      ) => {
+        const actionCreator = actions[`${actionName}Action`];
 
         if (typeof payload === "object" && payload !== null && !payload.type) {
-          const hasExplicitPayloadShape = ["id", "params", "formData", "data"]
-            .some((payloadKey) => payloadKey in payload)
+          const hasExplicitPayloadShape = [
+            "id",
+            "params",
+            "formData",
+            "data",
+          ].some((payloadKey) => payloadKey in payload);
           // Shorthand: request({ search: ... }) is treated as params
-          actionCreator(hasExplicitPayloadShape ? payload : { params: payload })
+          actionCreator(
+            hasExplicitPayloadShape ? payload : { params: payload },
+          );
         } else {
-          actionCreator({ params: payload })
+          actionCreator({ params: payload });
         }
-      }
-    })
+      };
+    });
 
-    const boundCustomMethods = {}
+    const boundCustomMethods = {};
     Object.entries(customMethods).forEach(([methodName, method]) => {
-      boundCustomMethods[methodName] = typeof method === "function"
-        ? (...args) => method(...args, actions, dispatch)
-        : method
-    })
+      boundCustomMethods[methodName] =
+        typeof method === "function"
+          ? (...args) => method(...args, actions, dispatch)
+          : method;
+    });
 
     // customMethods win, so a base method can be overridden
-    return { ...baseMethods, ...customActionMethods, ...boundCustomMethods }
-  }
-}
+    return { ...baseMethods, ...customActionMethods, ...boundCustomMethods };
+  };
+};
 
-export default createUseRequest
+export default createUseRequest;
