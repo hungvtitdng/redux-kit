@@ -1,6 +1,6 @@
 {
   "name": "@hungvt/redux-kit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Redux + saga base-store factory with HTTP client and CRUD API factory",
   "license": "MIT",
   "keywords": [
