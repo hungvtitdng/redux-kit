@@ -34,9 +34,11 @@ const createBaseReducer = (
   initialStateOverride = {},
   allActions = [],
   operations = [],
+  envelope = false,
 ) => {
   const initialState = {
     ...createInitialState(),
+    ...(envelope ? { message: null } : {}),
     ...initialStateOverride,
   };
 
@@ -102,6 +104,7 @@ const createBaseReducer = (
           if (action.type === constants[`${actionNameUpper}_REQUEST`]) {
             draft[loadingType] = true;
             draft.error = false;
+            if (envelope) draft.message = null;
             // Only reset actionSuccess for create/update/delete requests
             if (ACTION_STATE_NAMES.includes(actionConfig.name)) {
               draft.actionSuccess = null;
@@ -113,6 +116,7 @@ const createBaseReducer = (
           if (action.type === constants[`${actionNameUpper}_SUCCESS`]) {
             draft[loadingType] = false;
             draft[successSelector] = true;
+            if (envelope) draft.message = action.message ?? null;
 
             if (ACTION_STATE_NAMES.includes(actionConfig.name)) {
               draft.actionSuccess = true;

@@ -42,9 +42,11 @@ const createBaseActions = (constants, allActions = []) => {
       };
     };
 
-    actions[`${actionName}SuccessAction`] = (data) => ({
+    // `message` is only set when the store unwraps an envelope (see base/saga)
+    actions[`${actionName}SuccessAction`] = (data, message) => ({
       type: constants[`${actionNameUpper}_SUCCESS`],
       data,
+      message,
     });
   });
 

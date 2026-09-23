@@ -11,7 +11,10 @@ import { createUseSelector } from "./useSelector.js";
  * @param {Object} config
  * @param {string} config.name - module name, also the state key (e.g. "transaction")
  * @param {Object} [config.http] - HTTP client, required when `endpoint` is used without `api`
+ * @param {boolean} [config.envelope] - responses are `{ data, message }`: selectors get `data`,
+ *   `message` goes to `state.message`
  * @param {string} [config.endpoint] - API path, e.g. "warehouse-transactions"
+ * @param {Object} [config.methods] - HTTP verb per CRUD method, e.g. { update: "put" }
  * @param {Object} [config.api] - ready-made API object; wins over `endpoint`
  * @param {Object} [config.customApiMethods] - extra methods merged into the API
  * @param {Array}  [config.baseActions] - override the default CRUD action list ([] to disable)
@@ -79,7 +82,9 @@ export const createBaseStore = (config) => {
   const {
     name,
     http,
+    envelope = false,
     endpoint,
+    methods,
     api: providedApi,
     customApiMethods = {},
     baseActions: providedBaseActions,
@@ -96,7 +101,7 @@ export const createBaseStore = (config) => {
   if (providedApi) {
     api = providedApi;
   } else if (endpoint) {
-    api = createBaseApi(http, endpoint, customApiMethods);
+    api = createBaseApi(http, endpoint, customApiMethods, methods);
   } else {
     // No API and no endpoint: operations must bring their own methods
     api = {};
@@ -159,6 +164,7 @@ export const createBaseStore = (config) => {
   });
   const initialState = {
     ...createInitialState(),
+    ...(envelope ? { message: null } : {}),
     ...operationInitialState,
     ...(overrides.initialState || {}),
   };
@@ -169,6 +175,7 @@ export const createBaseStore = (config) => {
     overrides.initialState,
     allActions,
     operations,
+    envelope,
   );
   const reducer = overrides.reducer
     ? (state, action) => {
@@ -186,6 +193,7 @@ export const createBaseStore = (config) => {
     api,
     allActions,
     operations,
+    envelope,
   );
   const saga =
     typeof overrides.saga === "function" && overrides.saga.length > 0

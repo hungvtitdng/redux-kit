@@ -27,7 +27,7 @@ Same shape as any other dependency — a name and a semver range:
 
 ```json
 "dependencies": {
-  "@hungvt/redux-kit": "^0.1.0"
+  "@hungvt/redux-kit": "^1.1.0"
 }
 ```
 
@@ -36,8 +36,8 @@ import { createKit, configureStore } from "@hungvt/redux-kit"
 ```
 
 Published public on npmjs, so consumers need nothing else: no `.npmrc`, no token,
-no SSH key — it installs in CI and in a Docker build like `dayjs` does. `^0.1.0`
-picks up every later 0.1.x automatically; `yarn upgrade @hungvt/redux-kit`
+no SSH key — it installs in CI and in a Docker build like `dayjs` does. `^1.1.0`
+picks up every later 1.x automatically; `yarn upgrade @hungvt/redux-kit`
 moves within the range.
 
 The name is scoped because the bare `redux-kit` is taken on npm
@@ -53,8 +53,8 @@ one at npmjs.com/org/create if the username differs. The GitHub repo
 <summary>Installing straight from git instead (no publish)</summary>
 
 ```bash
-yarn add "github:hungvtitdng/redux-kit#v0.1.0"          # exact tag
-yarn add "github:hungvtitdng/redux-kit#semver:^0.1.0"   # newest matching tag
+yarn add "github:hungvtitdng/redux-kit#v1.1.0"          # exact tag
+yarn add "github:hungvtitdng/redux-kit#semver:^1.1.0"   # newest matching tag
 ```
 
 Works with zero registry setup, and `#semver:` even resolves ranges against tags,
@@ -65,7 +65,7 @@ but `yarn.lock` pins a commit hash and a private repo needs SSH keys everywhere
 ## Publishing a version
 
 There is nothing to compile. The package ships ESM source and Vite, webpack 5,
-Rollup and bun consume it directly — no build step, no `dist/`, no bundler
+Rollup, bun and React Native / Expo (Metro ≥ 0.76, which reads `exports`) consume it directly — no build step, no `dist/`, no bundler
 dependency. `files` keeps the tarball to `src/` + README (18 files, ~15 kB).
 
 First time:
@@ -79,8 +79,8 @@ Every release after that:
 
 ```bash
 # 1. bump "version" in package.json — patch = fix, minor = new option, major = breaking
-git commit -am "release: v0.1.1"
-git tag v0.1.1 && git push origin main --tags
+git commit -am "release: v1.1.1"
+git tag v1.1.1 && git push origin main --tags
 npm publish
 ```
 
@@ -92,7 +92,7 @@ hours and breaks anyone who already installed it.
 Dry runs before the real thing:
 
 ```bash
-yarn test                # 13 checks
+yarn test                # 19 checks
 npm pack --dry-run       # exactly what would be uploaded
 ```
 
@@ -163,7 +163,7 @@ export const { http, createBaseStore, createUseRequest, createBaseApi } = create
   baseURL: API_URL,
   headers: { Accept: "application/json" },
   getToken: () => getAccessToken(),           // your token storage
-  getLocale: () => currentLocale(),           // your i18n; sets the Localization header
+  getLocale: () => currentLocale(),           // your i18n; sets the Accept-Language header
   notifySuccess: (message) => notify(message),
   notifyError: (message) => notifyError(message),
   onUnauthorized: () => signOut(),            // called on HTTP 401
@@ -174,8 +174,52 @@ export const { http, createBaseStore, createUseRequest, createBaseApi } = create
 ```
 
 Every option is optional. Responses are unwrapped to `response.data`; errors are
-notified and rejected with the server payload. Already have an axios instance?
-`createKit({ http: myAxios })` and none of the HTTP options apply.
+notified and rejected with the server payload (or the axios error when there is
+no response, e.g. network down). Already have an axios instance?
+`createKit({ http: myAxios })` and none of the HTTP options apply — `envelope` still does.
+
+| option | default | meaning |
+|---|---|---|
+| `baseURL`, `headers` | — | axios defaults; any other axios option (`timeout`, ...) is passed through |
+| `getToken` | `() => null` | sets `Authorization: Bearer <token>` when it returns a value |
+| `getLocale` | `() => null` | sets the locale header, with or without a token |
+| `localeHeader` | `"Accept-Language"` | name of that header, e.g. `"Localization"` for a custom backend header |
+| `methods` | see step 4 | HTTP verb per CRUD method for every module, e.g. `{ update: "put" }` |
+| `notifySuccess(message)` | no-op | success toast |
+| `getSuccessMessage(response)` | `r => r.data?.message` | what to toast on success, any method; return `null` for no toast |
+| `notifyError(message)` | no-op | error toast |
+| `notifyFieldErrors` | `true` | 422: toast every field error. `false`: the form shows them; toast `message` only when there are no field errors |
+| `onUnauthorized(error)` | no-op | called on 401 |
+| `silentSuccessPaths` / `silentSuccessSubPaths` | `[]` | exact urls / url prefixes that never toast success |
+| `silentNotFoundPaths` / `silentNotFoundSubPaths` | `[]` | exact urls / url prefixes that never toast 404 |
+| `messages` | see below | built-in error texts; each a string or `() => string` (follows a language switch) |
+| `envelope` | `false` | server wraps every body as `{ data, message }`: selectors get `data`, `message` goes to `state.message` |
+
+`messages` keys: `forbidden` (403, used when the server sends no `message`),
+`notFound` (404), `serverError` (500), `timeout` (422 without body), `network`
+(no response; defaults to the axios message).
+
+Toast only on writes, with a fallback text, silent on GET:
+
+```js
+getSuccessMessage: ({ config, data }) => {
+  if (config.method === "get") return null
+  return data?.message || i18n.t(config.method === "delete" ? "deleted" : "saved")
+},
+```
+
+### `envelope` — Laravel-style `{ data, message }` responses
+
+Without it, a `GET /trips` answering `{ data: { items }, message: "OK" }` stores the
+whole body: `list.data.items`. With `createKit({ envelope: true, ... })`:
+
+```js
+const { list, message } = tripStore.useSelector()
+// list    -> { items }   (the body's `data`)
+// message -> "OK"        (reset to null on the next request)
+```
+
+Only a plain object with a `data` key is unwrapped; anything else is stored as is.
 
 ## 2. `src/store/index.js` — the store
 
@@ -251,6 +295,20 @@ export const transactionStore = createBaseStore({
 | `update` | `update(id, formData)` | `PATCH /warehouse-transactions/:id` |
 | `delete` | `destroy(id)` | `DELETE /warehouse-transactions/:id` |
 
+The verbs are configurable — for every module in `createKit({ methods })`, or per
+module in `createBaseStore({ methods })`, which wins:
+
+```js
+createKit({ methods: { update: "put" } })                      // whole app: PUT instead of PATCH
+createBaseStore({ name: "search", endpoint: "search",
+  methods: { list: "post" } })                                 // this module: search via POST
+```
+
+Keys: `list`, `store`, `detail`, `update`, `destroy`. With `get`/`delete` the
+params go in the query string; with a body verb (`post`/`put`/`patch`) the data
+goes in the body, or the params when there is no data. An unknown verb throws
+when the module is created.
+
 **Operations** are everything else — each adds one action + saga + state slot:
 
 | field | meaning |
@@ -274,6 +332,31 @@ export const optionsStore = createBaseStore({
   operations: [
     { name: "getAccounts", apiName: "accounts", payload: ["params"], selector: "accounts" },
   ],
+})
+```
+
+### `overrides` — escape hatch
+
+When the generated parts are not enough, replace or extend them:
+
+```js
+export const authStore = createBaseStore({
+  name: "auth",
+  api: authApi,
+  baseActions: [],
+  operations: [/* login, logout, ... */],
+  overrides: {
+    initialState: { isAuthenticated: false, user: null },   // merged over the generated state
+    actions: {                                              // merged over the generated creators
+      setUserAction: (user) => ({ type: "auth/SET_USER", user }),
+    },
+    // runs first; return a new state to handle the action, undefined to fall through
+    reducer: (state, action) =>
+      action.type === "auth/SET_USER"
+        ? { ...state, user: action.user, isAuthenticated: !!action.user }
+        : undefined,
+    // saga: a root saga replacing the generated one, or (constants, actions, api) => rootSaga
+  },
 })
 ```
 
@@ -399,7 +482,7 @@ nothing at runtime: no reducer, no saga, no state key until first mount.
 | `createKit(options)` | `{ http, createBaseApi, createBaseStore, createUseRequest }` bound to one HTTP client |
 | `createHttpClient(options)` | axios instance with auth/notify/error interceptors |
 | `createErrorHandler(options)` | just the response-error interceptor |
-| `createBaseApi(http, endpoint, customMethods)` | CRUD API object |
+| `createBaseApi(http, endpoint, customMethods, methods)` | CRUD API object |
 | `createBaseStore(config)` | constants + actions + reducer + saga + initialState + useSelector |
 | `createUseRequest(name, store, customMethods)` | request-methods hook; injects reducer/saga |
 | `configureStore(options)` | store + saga middleware + injection registries |
@@ -416,6 +499,11 @@ nothing at runtime: no reducer, no saga, no state key until first mount.
 | `api: "option"` (glob lookup by filename) | `api: optionApi` (plain import) |
 | `import { createBaseStore } from "<app>/store/base"` | `import { createBaseStore } from "<app>/store/kit"` |
 | `import httpRequest from "<app>/services/httpRequest"` | `import { http } from "<app>/store/kit"` |
+| saga split `{ data, message }` itself | `createKit({ envelope: true })` |
+| success toast only on POST/PUT/PATCH/DELETE, fallback text | `getSuccessMessage` (the default toasts any response carrying `message`, GET included) |
+| 422 field errors shown inline, not toasted | `notifyFieldErrors: false` |
+| `Localization` locale header | `localeHeader: "Localization"` (the default is now `Accept-Language`) |
+| `i18n.t(...)` in the error handler | `messages: { network: () => i18n.t(...) }` |
 
 Behaviour differences, all deliberate:
 
@@ -428,6 +516,8 @@ Behaviour differences, all deliberate:
   That also removes JSX, hence no build step.
 - `lodash` and `invariant` replaced by plain checks; messages changed, behaviour
   did not.
+- Without `envelope`, `state.message` does not exist and the whole response body
+  is stored in the selector.
 - `import.meta.env.VITE_NODE_ENV` → `process.env.NODE_ENV`, so the package also
   runs under plain Node (see `test/`).
 - **Bugfix:** an error clears custom loading flags too (`exporting`,
@@ -445,8 +535,8 @@ yarn install
 yarn test
 ```
 
-13 checks, no framework, no jsdom: request/response interceptors, the 401/404/422
-error matrix, CRUD end-to-end (dispatch → api → saga → reducer), operations with
+19 checks, no framework, no jsdom: request/response interceptors, the 401/403/404/422
+error matrix, success-toast rules, locale header, configurable CRUD verbs, envelope unwrapping, async hooks, CRUD end-to-end (dispatch → api → saga → reducer), operations with
 their own loading flag and hooks, error paths, and two stores staying independent.
 
 Cutting a release is described under [Publishing a version](#publishing-a-version).

@@ -7,16 +7,21 @@ import { all, call, put, takeEvery } from "redux-saga/effects";
  */
 /**
  * Run an operation hook. Accepts a generator function (effects are yielded to
- * the saga) or a plain function (side effects only) — `yield* plainFn()` would
- * throw on the undefined return value.
+ * the saga), an async function (awaited) or a plain function (side effects
+ * only) — `yield* plainFn()` would throw on the undefined return value.
  */
 function* runHook(hook, ...args) {
   if (typeof hook !== "function") return;
   const result = hook(...args);
   if (result && typeof result[Symbol.iterator] === "function") {
     yield* result;
+  } else if (result && typeof result.then === "function") {
+    yield result;
   }
 }
+
+const isEnvelope = (body) =>
+  body !== null && typeof body === "object" && !Array.isArray(body) && "data" in body;
 
 const createBaseSaga = (
   constants,
@@ -24,6 +29,7 @@ const createBaseSaga = (
   api,
   allActions = [],
   operations = [],
+  envelope = false,
 ) => {
   const sagas = [];
 
@@ -77,8 +83,12 @@ const createBaseSaga = (
           res = yield call(apiFunction);
         }
 
-        const successData = res ?? {};
-        yield put(actions[`${actionName}SuccessAction`](successData));
+        // envelope: `{ data, message }` -> selector gets `data`, `message` goes to state.message
+        const body = res ?? {};
+        const unwrap = envelope && isEnvelope(body);
+        const successData = unwrap ? body.data : body;
+        const message = unwrap ? body.message : undefined;
+        yield put(actions[`${actionName}SuccessAction`](successData, message));
 
         yield* runHook(operation?.saga?.after, successData, payload, actions);
       } catch (error) {

@@ -24,6 +24,7 @@ const notifyValidationErrors = (errors, notifyError) => {
 export const createErrorHandler = ({
   notifyError = () => {},
   onUnauthorized = () => {},
+  notifyFieldErrors = true,
   silentNotFoundPaths = [],
   silentNotFoundSubPaths = [],
   messages = {},
@@ -33,8 +34,11 @@ export const createErrorHandler = ({
     notFound: "404 Not Found",
     serverError: "500 Internal Server Error",
     timeout: "Request timeout!",
+    network: null, // null: fall back to the axios message ("Network Error")
     ...messages,
   };
+  // A message may be a function so it follows a runtime language switch
+  const t = (key) => (typeof text[key] === "function" ? text[key]() : text[key]);
 
   return (error) => {
     const statusCode = error?.response?.status;
@@ -47,7 +51,7 @@ export const createErrorHandler = ({
         break;
 
       case 403:
-        notifyError(text.forbidden);
+        notifyError(payload?.message || t("forbidden"));
         break;
 
       case 404:
@@ -55,13 +59,17 @@ export const createErrorHandler = ({
           !silentNotFoundPaths.includes(url) &&
           !startsWithAny(url, silentNotFoundSubPaths)
         ) {
-          notifyError(text.notFound);
+          notifyError(t("notFound"));
         }
         break;
 
       case 422:
         if (!payload) {
-          notifyError(text.timeout);
+          notifyError(t("timeout"));
+        } else if (!notifyFieldErrors) {
+          // Field errors are rendered inline by the form; toast only a general message
+          const hasFieldErrors = Object.keys(payload.errors || {}).length > 0;
+          if (!hasFieldErrors && payload.message) notifyError(payload.message);
         } else {
           notifyValidationErrors(
             payload.errors || payload.message,
@@ -71,19 +79,20 @@ export const createErrorHandler = ({
         break;
 
       case 500:
-        notifyError(text.serverError);
+        notifyError(t("serverError"));
         break;
 
       default:
         if (statusCode) {
           notifyError(`${statusCode} ${payload?.message ?? ""}`.trim());
         } else {
-          notifyError(error?.message || text.timeout);
+          notifyError(t("network") || error?.message || t("timeout"));
         }
         break;
     }
 
-    return Promise.reject(payload);
+    // No response (network error, timeout): reject the axios error so callers still see a failure
+    return Promise.reject(payload ?? error);
   };
 };
 

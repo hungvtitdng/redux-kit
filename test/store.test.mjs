@@ -272,3 +272,85 @@ test("selector: null keeps no response in state", async () => {
   assert.equal(state.pingSuccess, true);
   assert.equal(state.actionSuccess, true);
 });
+
+test("envelope: selector gets `data`, `message` lands in state.message", async () => {
+  const { createBaseStore } = createKit({
+    envelope: true,
+    http: fakeHttp({
+      get: () => Promise.resolve({ data: { items: [1, 2] }, message: "OK" }),
+    }),
+  });
+
+  const store = configureStore();
+  const trip = createBaseStore({ name: "trip", endpoint: "trips" });
+  mount(store, trip);
+  assert.equal(store.getState().trip.message, null);
+
+  store.dispatch(trip.actions.getListAction({ params: {} }));
+  await tick();
+
+  assert.deepEqual(store.getState().trip.list, { items: [1, 2] });
+  assert.equal(store.getState().trip.message, "OK");
+
+  store.dispatch(trip.actions.getListAction({ params: {} }));
+  assert.equal(store.getState().trip.message, null);
+});
+
+test("async operation hooks are awaited before the saga moves on", async () => {
+  const seen = [];
+  const { createBaseStore } = createKit({ http: fakeHttp() });
+
+  const store = configureStore();
+  const session = createBaseStore({
+    name: "session",
+    api: { login: () => Promise.resolve({}) },
+    baseActions: [],
+    operations: [
+      {
+        name: "login",
+        selector: null,
+        saga: {
+          before: async () => {
+            await tick();
+            seen.push("before");
+          },
+          after: () => seen.push("after"),
+        },
+      },
+    ],
+  });
+  mount(store, session);
+
+  store.dispatch(session.actions.loginAction());
+  await tick();
+  await tick();
+
+  assert.deepEqual(seen, ["before", "after"]);
+});
+
+test("methods: kit-wide verbs, a module overrides, typos fail loudly", async () => {
+  const http = fakeHttp({
+    put: (url, body) => (http.calls.push(["put", url, body]), Promise.resolve({})),
+  });
+  const { createBaseStore } = createKit({ http, methods: { update: "put" } });
+
+  const store = configureStore();
+  const trip = createBaseStore({ name: "trip2", endpoint: "trips" });
+  // list as a POST search: params travel in the body
+  const search = createBaseStore({ name: "search", endpoint: "search", methods: { list: "post" } });
+  mount(store, trip);
+  mount(store, search);
+
+  store.dispatch(trip.actions.updateAction({ id: 7, formData: { seats: 2 } }));
+  store.dispatch(search.actions.getListAction({ params: { q: "hue" } }));
+  await tick();
+
+  assert.deepEqual(http.calls, [
+    ["put", "/trips/7", { seats: 2 }],
+    ["post", "/search", { q: "hue" }],
+  ]);
+  assert.throws(
+    () => createBaseStore({ name: "bad", endpoint: "x", methods: { update: "pacth" } }),
+    /update uses "pacth"/,
+  );
+});

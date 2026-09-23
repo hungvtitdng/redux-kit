@@ -10,6 +10,10 @@ import { createUseRequest } from "./createUseRequest.js";
  * second kit (different baseURL, different auth) is just a second call.
  *
  * @param {Object} options - an existing client via `http`, otherwise createHttpClient options
+ * @param {boolean} [options.envelope] - responses are `{ data, message }`: selectors get `data`,
+ *   `message` goes to `state.message` (passed to every createBaseStore)
+ * @param {Object} [options.methods] - HTTP verb per CRUD method for every module, e.g. { update: "put" };
+ *   a module's own `methods` wins
  * @returns {Object} { http, createBaseApi, createBaseStore, createUseRequest }
  *
  * @example
@@ -20,15 +24,20 @@ import { createUseRequest } from "./createUseRequest.js";
  *   onUnauthorized: () => signOut(),
  * })
  */
-export const createKit = ({ http, ...httpOptions } = {}) => {
+export const createKit = ({ http, envelope = false, methods = {}, ...httpOptions } = {}) => {
   const client = http || createHttpClient(httpOptions);
 
   return {
     http: client,
-    createBaseApi: (endpoint, customMethods) =>
-      createBaseApiWithHttp(client, endpoint, customMethods),
+    createBaseApi: (endpoint, customMethods, moduleMethods) =>
+      createBaseApiWithHttp(client, endpoint, customMethods, { ...methods, ...moduleMethods }),
     createBaseStore: (config) =>
-      createBaseStoreWithHttp({ http: client, ...config }),
+      createBaseStoreWithHttp({
+        http: client,
+        envelope,
+        ...config,
+        methods: { ...methods, ...config.methods },
+      }),
     createUseRequest,
   };
 };

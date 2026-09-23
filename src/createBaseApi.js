@@ -5,9 +5,26 @@
  * @param {Object} http - HTTP client (see createHttpClient)
  * @param {string} endpoint - e.g. "/categories" or "categories"
  * @param {Object} [customMethods] - extra/overriding methods
+ * @param {Object} [methods] - HTTP verb per CRUD method, e.g. { update: "put" }
  * @returns {Object} api object
  */
-export const createBaseApi = (http, endpoint = null, customMethods = {}) => {
+export const DEFAULT_METHODS = {
+  list: "get",
+  store: "post",
+  detail: "get",
+  update: "patch",
+  destroy: "delete",
+};
+
+// Verbs without a request body: params go in the query string
+const BODYLESS = ["get", "delete", "head", "options"];
+
+export const createBaseApi = (
+  http,
+  endpoint = null,
+  customMethods = {},
+  methods = {},
+) => {
   if (!endpoint) return customMethods;
 
   if (!http) {
@@ -16,15 +33,33 @@ export const createBaseApi = (http, endpoint = null, customMethods = {}) => {
     );
   }
 
+  const verbs = { ...DEFAULT_METHODS, ...methods };
+  Object.entries(verbs).forEach(([name, verb]) => {
+    if (typeof http[verb] !== "function") {
+      throw new Error(
+        `@hungvt/redux-kit: createBaseApi("${endpoint}") ${name} uses "${verb}", which the http client does not have`,
+      );
+    }
+  });
+
+  // A body verb sends `data`, or `params` when there is none (e.g. list as a POST search)
+  const send = (name, url, { params, data } = {}) => {
+    const verb = verbs[name];
+    if (BODYLESS.includes(verb)) {
+      return params === undefined ? http[verb](url) : http[verb](url, { params });
+    }
+    return http[verb](url, data ?? params);
+  };
+
   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
   return {
-    list: (params) => http.get(path, { params }),
-    store: (formData) => http.post(path, formData),
+    list: (params) => send("list", path, { params }),
+    store: (formData) => send("store", path, { data: formData }),
     detail: (id = null, params = {}) =>
-      http.get(`${path}${id ? `/${id}` : ""}`, { params }),
-    update: (id, formData) => http.patch(`${path}/${id}`, formData),
-    destroy: (id) => http.delete(`${path}/${id}`),
+      send("detail", `${path}${id ? `/${id}` : ""}`, { params }),
+    update: (id, formData) => send("update", `${path}/${id}`, { data: formData }),
+    destroy: (id) => send("destroy", `${path}/${id}`),
     ...customMethods,
   };
 };
