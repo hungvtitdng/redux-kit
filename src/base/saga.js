@@ -53,6 +53,9 @@ const createBaseSaga = (
           throw new Error(`API method "${apiMethod}" not found`);
         }
 
+        // Per-request http config ({ silent: true }), passed as the API method's last argument
+        const options = payload.options;
+
         let res;
         const payloadConfig = actionConfig.payload;
         if (
@@ -72,15 +75,17 @@ const createBaseSaga = (
                 ? payload.formData || payload.data
                 : payload[paramName];
 
-            if (value !== undefined) apiParams.push(value);
+            // With options, keep empty slots so options lands after every param
+            if (value !== undefined || options) apiParams.push(value);
           });
+          if (options) apiParams.push(options);
 
           res =
             apiParams.length > 0
               ? yield call(apiFunction, ...apiParams)
               : yield call(apiFunction);
         } else {
-          res = yield call(apiFunction);
+          res = options ? yield call(apiFunction, options) : yield call(apiFunction);
         }
 
         // envelope: `{ data, message }` -> selector gets `data`, `message` goes to state.message

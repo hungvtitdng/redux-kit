@@ -26,7 +26,7 @@ import { createErrorHandler, startsWithAny } from "./errorHandler.js";
  * @param {string[]} [options.silentNotFoundPaths] - exact urls that never notify 404
  * @param {string[]} [options.silentNotFoundSubPaths] - url prefixes that never notify 404
  * @param {Object} [options.messages] - override the built-in error texts, string or () => string
- * @returns {Object} axios instance
+ * @returns {Object} axios instance; a request with `{ silent: true }` in its config never notifies success
  */
 export const createHttpClient = ({
   baseURL,
@@ -62,6 +62,7 @@ export const createHttpClient = ({
   client.interceptors.response.use((response) => {
     const url = response.config?.url || "";
     const silent =
+      response.config?.silent ||
       silentSuccessPaths.includes(url) ||
       startsWithAny(url, silentSuccessSubPaths);
 

@@ -1,6 +1,6 @@
 {
   "name": "@hungvt/redux-kit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Redux + saga base-store factory with HTTP client and CRUD API factory",
   "license": "MIT",
   "keywords": [
@@ -28,7 +28,7 @@
     "access": "public"
   },
   "peerDependencies": {
-    "axios": ">=0.19",
+    "axios": ">=0.19.1",
     "immer": ">=5",
     "react": ">=17",
     "react-redux": ">=7",
@@ -36,7 +36,7 @@
     "redux-saga": ">=1"
   },
   "devDependencies": {
-    "axios": "^0.19.2",
+    "axios": "^1.20.0",
     "immer": "^5.3.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

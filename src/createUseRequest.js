@@ -25,6 +25,7 @@ const BASE_ACTION_NAMES = [
  * // -> getListTransactionRequest, getDetailTransactionRequest, createTransactionRequest,
  * //    updateTransactionRequest, deleteTransactionRequest, setDataTransactionRequest,
  * //    plus one method per operation (exportTransactionRequest, ...)
+ * // Any of them takes per-request options last: updateTransactionRequest(id, data, { silent: true })
  */
 export const createUseRequest = (name, store, customMethods = {}) => {
   const nameCapitalized = name.charAt(0).toUpperCase() + name.slice(1);
@@ -36,19 +37,28 @@ export const createUseRequest = (name, store, customMethods = {}) => {
     const dispatch = useDispatch();
     const actions = bindActionCreators(store.actions, dispatch);
 
+    // Last argument `options` is the per-request http config, e.g. { silent: true }
     const baseMethods = {
       [`setData${nameCapitalized}Request`]: (params) =>
         actions.setDataAction(params),
-      [`getList${nameCapitalized}Request`]: (params) =>
-        actions.getListAction({ params }),
-      [`getDetail${nameCapitalized}Request`]: (id, params) =>
-        actions.getDetailAction({ id, params }),
-      [`create${nameCapitalized}Request`]: (data) =>
-        actions.createAction({ formData: data }),
-      [`update${nameCapitalized}Request`]: (id, data) =>
-        actions.updateAction({ id, formData: data }),
-      [`delete${nameCapitalized}Request`]: (id) => actions.deleteAction({ id }),
+      [`getList${nameCapitalized}Request`]: (params, options) =>
+        actions.getListAction({ params, options }),
+      [`getDetail${nameCapitalized}Request`]: (id, params, options) =>
+        actions.getDetailAction({ id, params, options }),
+      [`create${nameCapitalized}Request`]: (data, options) =>
+        actions.createAction({ formData: data, options }),
+      [`update${nameCapitalized}Request`]: (id, data, options) =>
+        actions.updateAction({ id, formData: data, options }),
+      [`delete${nameCapitalized}Request`]: (id, options) =>
+        actions.deleteAction({ id, options }),
     };
+
+    // Only expose the base methods the store has (baseActions: ["update"], [])
+    BASE_ACTION_NAMES.forEach((actionName) => {
+      if (!actions[`${actionName}Action`]) {
+        delete baseMethods[`${actionName}${nameCapitalized}Request`];
+      }
+    });
 
     // One method per non-base action: exportTransactionRequest, getSummaryStorageHistoryRequest, ...
     const customActionMethods = {};
@@ -57,8 +67,11 @@ export const createUseRequest = (name, store, customMethods = {}) => {
 
       customActionMethods[`${actionName}${nameCapitalized}Request`] = (
         payload,
+        options,
       ) => {
         const actionCreator = actions[`${actionName}Action`];
+        const withOptions = (actionPayload) =>
+          options ? { ...actionPayload, options } : actionPayload;
 
         if (typeof payload === "object" && payload !== null && !payload.type) {
           const hasExplicitPayloadShape = [
@@ -69,10 +82,10 @@ export const createUseRequest = (name, store, customMethods = {}) => {
           ].some((payloadKey) => payloadKey in payload);
           // Shorthand: request({ search: ... }) is treated as params
           actionCreator(
-            hasExplicitPayloadShape ? payload : { params: payload },
+            withOptions(hasExplicitPayloadShape ? payload : { params: payload }),
           );
         } else {
-          actionCreator({ params: payload });
+          actionCreator(withOptions({ params: payload }));
         }
       };
     });

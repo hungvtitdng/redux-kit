@@ -21,12 +21,14 @@ const createBaseActions = (constants, allActions = []) => {
       let id;
       let params;
       let formData;
+      let options;
 
       if (typeof payload === "object" && payload !== null && !payload.type) {
-        // Payload is an object { id, params, formData }
+        // Payload is an object { id, params, formData, options }
         id = payload.id;
         params = payload.params;
         formData = payload.formData || payload.data;
+        options = payload.options;
       } else {
         // Backward compatible: a bare value is treated as params/data
         params = payload;
@@ -39,6 +41,7 @@ const createBaseActions = (constants, allActions = []) => {
         params,
         formData,
         data: formData, // alias for backward compatibility
+        options, // per-request http config, e.g. { silent: true }
       };
     };
 

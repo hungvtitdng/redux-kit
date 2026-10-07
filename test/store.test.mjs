@@ -7,6 +7,9 @@ import {
   injectReducer,
   injectSaga,
 } from "../src/index.js";
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
+import { Provider } from "react-redux";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -353,4 +356,123 @@ test("methods: kit-wide verbs, a module overrides, typos fail loudly", async () 
     () => createBaseStore({ name: "bad", endpoint: "x", methods: { update: "pacth" } }),
     /update uses "pacth"/,
   );
+});
+
+test("baseActions: a name picks the default CRUD config, an object overrides it", async () => {
+  const { createBaseStore } = createKit({ http: fakeHttp() });
+
+  const store = configureStore();
+  const user = createBaseStore({
+    name: "user",
+    api: { update: (id, formData) => Promise.resolve({ id, ...formData }) },
+    baseActions: [{ name: "update", selector: "profile" }],
+    operations: [{ name: "changePassword", payload: ["formData"], selector: null }],
+  });
+  mount(store, user);
+
+  assert.deepEqual(user.allActions.map(({ name }) => name), ["update", "changePassword"]);
+  assert.equal(user.initialState.profile, null);
+
+  store.dispatch(user.actions.updateAction({ id: 1, formData: { name: "B" } }));
+  assert.equal(store.getState().user.submitting, true);
+  await tick();
+
+  assert.deepEqual(store.getState().user.profile, { id: 1, name: "B" });
+  assert.equal(store.getState().user.updateSuccess, true);
+
+  const onlyDelete = createBaseStore({ name: "trip3", endpoint: "trips", baseActions: ["delete"] });
+  assert.deepEqual(onlyDelete.allActions, [
+    { name: "delete", apiName: "destroy", payload: ["id"], selector: null, loadingType: "loading", successSelector: "deleteSuccess" },
+  ]);
+  assert.throws(
+    () => createBaseStore({ name: "bad", endpoint: "x", baseActions: ["updte"] }),
+    /Unknown base action "updte"/,
+  );
+});
+
+test("options: per-request config is the API method's last argument", async () => {
+  const http = fakeHttp({
+    patch: (url, body, config) => (http.calls.push(["patch", url, body, config]), Promise.resolve({})),
+    delete: (url, config) => (http.calls.push(["delete", url, config]), Promise.resolve({})),
+  });
+  const { createBaseStore } = createKit({ http });
+  const seen = [];
+
+  const store = configureStore();
+  const trip = createBaseStore({
+    name: "trip4",
+    endpoint: "trips",
+    customApiMethods: { ping: (config) => (seen.push(config), Promise.resolve({})) },
+    operations: [{ name: "ping", selector: null }],
+  });
+  mount(store, trip);
+
+  const silent = { silent: true };
+  store.dispatch(trip.actions.updateAction({ id: 7, formData: { seats: 2 }, options: silent }));
+  store.dispatch(trip.actions.getListAction({ options: silent }));
+  store.dispatch(trip.actions.getListAction({ params: { page: 2 }, options: silent }));
+  store.dispatch(trip.actions.deleteAction({ id: 7, options: silent }));
+  store.dispatch(trip.actions.updateAction({ id: 8, formData: { seats: 1 } }));
+  store.dispatch(trip.actions.pingAction({ options: silent }));
+  await tick();
+
+  assert.deepEqual(http.calls, [
+    ["patch", "/trips/7", { seats: 2 }, silent],
+    ["get", "/trips", silent],
+    ["get", "/trips", { silent: true, params: { page: 2 } }],
+    ["delete", "/trips/7", silent],
+    ["patch", "/trips/8", { seats: 1 }, undefined],
+  ]);
+  assert.deepEqual(seen, [silent]);
+});
+
+test("createUseRequest: only the base methods the store has, options last", async () => {
+  const http = fakeHttp({
+    patch: (url, body, config) => (http.calls.push(["patch", url, body, config]), Promise.resolve({})),
+    post: (url, body, config) => (http.calls.push(["post", url, body, config]), Promise.resolve({})),
+  });
+  const kit = createKit({ http });
+  const user = kit.createBaseStore({
+    name: "user",
+    api: {
+      update: (id, formData, config) => http.patch(`/users/${id}`, formData, config),
+      changePassword: (formData, config) => http.post("/me/password", formData, config),
+    },
+    baseActions: ["update"],
+    operations: [{ name: "changePassword", payload: ["formData"], selector: null }],
+  });
+  const useUserRequest = kit.createUseRequest("user", user);
+
+  const store = configureStore();
+  mount(store, user);
+  let methods;
+  const Probe = () => {
+    methods = useUserRequest();
+    return null;
+  };
+  // Server render needs no DOM; mute its warning that injection (useLayoutEffect) is skipped
+  const { error } = console;
+  console.error = () => {};
+  try {
+    renderToString(createElement(Provider, { store }, createElement(Probe)));
+  } finally {
+    console.error = error;
+  }
+
+  assert.deepEqual(Object.keys(methods).sort(), [
+    "changePasswordUserRequest",
+    "setDataUserRequest",
+    "updateUserRequest",
+  ]);
+
+  methods.updateUserRequest(1, { name: "B" }, { silent: true });
+  methods.updateUserRequest(1, { name: "C" });
+  methods.changePasswordUserRequest({ formData: { password: "x" } }, { silent: true });
+  await tick();
+
+  assert.deepEqual(http.calls, [
+    ["patch", "/users/1", { name: "B" }, { silent: true }],
+    ["patch", "/users/1", { name: "C" }, undefined],
+    ["post", "/me/password", { password: "x" }, { silent: true }],
+  ]);
 });

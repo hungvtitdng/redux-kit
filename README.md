@@ -27,7 +27,7 @@ Same shape as any other dependency — a name and a semver range:
 
 ```json
 "dependencies": {
-  "@hungvt/redux-kit": "^1.1.0"
+  "@hungvt/redux-kit": "^1.2.0"
 }
 ```
 
@@ -36,7 +36,7 @@ import { createKit, configureStore } from "@hungvt/redux-kit"
 ```
 
 Published public on npmjs, so consumers need nothing else: no `.npmrc`, no token,
-no SSH key — it installs in CI and in a Docker build like `dayjs` does. `^1.1.0`
+no SSH key — it installs in CI and in a Docker build like `dayjs` does. `^1.2.0`
 picks up every later 1.x automatically; `yarn upgrade @hungvt/redux-kit`
 moves within the range.
 
@@ -46,15 +46,16 @@ npm username, or an org you belong to — orgs are free for public packages, cre
 one at npmjs.com/org/create if the username differs. The GitHub repo
 (`hungvtitdng/redux-kit`) is unrelated to the npm scope.
 
-**Peer deps are never installed for you** — the app must already have `axios`,
+**Peer deps are never installed for you** — the app must already have `axios`
+(≥ 0.19.1, the first version that keeps custom config keys like `silent`),
 `redux`, `react-redux`, `redux-saga`, `immer`, `react`.
 
 <details>
 <summary>Installing straight from git instead (no publish)</summary>
 
 ```bash
-yarn add "github:hungvtitdng/redux-kit#v1.1.0"          # exact tag
-yarn add "github:hungvtitdng/redux-kit#semver:^1.1.0"   # newest matching tag
+yarn add "github:hungvtitdng/redux-kit#v1.2.0"          # exact tag
+yarn add "github:hungvtitdng/redux-kit#semver:^1.2.0"   # newest matching tag
 ```
 
 Works with zero registry setup, and `#semver:` even resolves ranges against tags,
@@ -66,7 +67,7 @@ but `yarn.lock` pins a commit hash and a private repo needs SSH keys everywhere
 
 There is nothing to compile. The package ships ESM source and Vite, webpack 5,
 Rollup, bun and React Native / Expo (Metro ≥ 0.76, which reads `exports`) consume it directly — no build step, no `dist/`, no bundler
-dependency. `files` keeps the tarball to `src/` + README (18 files, ~15 kB).
+dependency. `files` keeps the tarball to `src/` + README (18 files, ~20 kB).
 
 First time:
 
@@ -92,7 +93,7 @@ hours and breaks anyone who already installed it.
 Dry runs before the real thing:
 
 ```bash
-yarn test                # 19 checks
+yarn test                # 23 checks
 npm pack --dry-run       # exactly what would be uploaded
 ```
 
@@ -190,7 +191,7 @@ no response, e.g. network down). Already have an axios instance?
 | `notifyError(message)` | no-op | error toast |
 | `notifyFieldErrors` | `true` | 422: toast every field error. `false`: the form shows them; toast `message` only when there are no field errors |
 | `onUnauthorized(error)` | no-op | called on 401 |
-| `silentSuccessPaths` / `silentSuccessSubPaths` | `[]` | exact urls / url prefixes that never toast success |
+| `silentSuccessPaths` / `silentSuccessSubPaths` | `[]` | exact urls / url prefixes that never toast success; for one call only, see [per-request `silent`](#per-request-silent--skip-the-success-toast-once) |
 | `silentNotFoundPaths` / `silentNotFoundSubPaths` | `[]` | exact urls / url prefixes that never toast 404 |
 | `messages` | see below | built-in error texts; each a string or `() => string` (follows a language switch) |
 | `envelope` | `false` | server wraps every body as `{ data, message }`: selectors get `data`, `message` goes to `state.message` |
@@ -322,6 +323,25 @@ when the module is created.
 | `saga.before` / `after` / `error` | hooks; generator or plain function |
 | `reducer` | `(draft, action)` immer patch, runs after success |
 
+Only some CRUD actions — list them by name in `baseActions`; an object keeps the
+defaults of that action and overrides the fields you give:
+
+```js
+export const userStore = createBaseStore({
+  name: "user",
+  api: userApi,                                          // userApi.update(id, formData)
+  baseActions: [{ name: "update", selector: "profile" }], // or ["update"] to keep selector "detail"
+  operations: [
+    { name: "getProfile", apiName: "profile", selector: "profile" },
+    { name: "changePassword", payload: ["formData"], selector: null, loadingType: "submitting" },
+  ],
+})
+```
+
+Names: `getList`, `create`, `getDetail`, `update`, `delete`. An unknown name throws
+when the module is created. The hook only exposes the base methods the store has
+(`updateUserRequest` here, no `getListUserRequest`).
+
 No CRUD at all — a module of pure custom calls:
 
 ```js
@@ -411,6 +431,33 @@ Calling `useTransactionRequest()` is what injects the module's reducer and saga
 
 `error` holds the rejected payload; any failure clears `loading`, `submitting`,
 every custom loading flag, and every success flag.
+
+### Per-request `silent` — skip the success toast once
+
+Every request method takes per-request options as its **last** argument. The same
+request can toast "Updated" in one place and stay quiet in another:
+
+```js
+updateUserRequest(id, data)                                   // toasts the success message
+updateUserRequest(id, data, { silent: true })                 // no success toast
+changePasswordUserRequest({ formData }, { silent: true })     // operation: payload, then options
+getListTransactionRequest(undefined, { silent: true })        // no params, still options last
+```
+
+`silent` only mutes the **success** toast — errors are still notified and 401
+still calls `onUnauthorized`. The options travel as the axios config: the saga
+passes them as the API method's last argument (after every `payload` slot), and
+the CRUD methods built from `endpoint` forward them to `http`. A hand-written API
+method must forward it too:
+
+```js
+export default {
+  profile: (config) => http.get("/me", config),                    // no payload: options first
+  update: (id, formData, config) => http.put(`/users/${id}`, formData, config),
+}
+```
+
+Calling `http` directly works the same way: `http.post(url, data, { silent: true })`.
 
 ## 7. Adding more modules
 

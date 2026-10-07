@@ -42,24 +42,27 @@ export const createBaseApi = (
     }
   });
 
-  // A body verb sends `data`, or `params` when there is none (e.g. list as a POST search)
-  const send = (name, url, { params, data } = {}) => {
+  // A body verb sends `data`, or `params` when there is none (e.g. list as a POST search).
+  // `config` is the per-request axios config, e.g. { silent: true }
+  const send = (name, url, { params, data } = {}, config) => {
     const verb = verbs[name];
     if (BODYLESS.includes(verb)) {
-      return params === undefined ? http[verb](url) : http[verb](url, { params });
+      if (params === undefined) return config ? http[verb](url, config) : http[verb](url);
+      return http[verb](url, { ...config, params });
     }
-    return http[verb](url, data ?? params);
+    return config ? http[verb](url, data ?? params, config) : http[verb](url, data ?? params);
   };
 
   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
   return {
-    list: (params) => send("list", path, { params }),
-    store: (formData) => send("store", path, { data: formData }),
-    detail: (id = null, params = {}) =>
-      send("detail", `${path}${id ? `/${id}` : ""}`, { params }),
-    update: (id, formData) => send("update", `${path}/${id}`, { data: formData }),
-    destroy: (id) => send("destroy", `${path}/${id}`),
+    list: (params, config) => send("list", path, { params }, config),
+    store: (formData, config) => send("store", path, { data: formData }, config),
+    detail: (id = null, params = {}, config) =>
+      send("detail", `${path}${id ? `/${id}` : ""}`, { params }, config),
+    update: (id, formData, config) =>
+      send("update", `${path}/${id}`, { data: formData }, config),
+    destroy: (id, config) => send("destroy", `${path}/${id}`, {}, config),
     ...customMethods,
   };
 };

@@ -17,7 +17,8 @@ import { createUseSelector } from "./useSelector.js";
  * @param {Object} [config.methods] - HTTP verb per CRUD method, e.g. { update: "put" }
  * @param {Object} [config.api] - ready-made API object; wins over `endpoint`
  * @param {Object} [config.customApiMethods] - extra methods merged into the API
- * @param {Array}  [config.baseActions] - override the default CRUD action list ([] to disable)
+ * @param {Array}  [config.baseActions] - override the default CRUD action list ([] to disable):
+ *   names (["update"]) or configs merged over the default ({ name: "update", selector: "profile" })
  * @param {Array}  [config.operations] - non-CRUD actions:
  *   { name, apiName, payload, selector, loadingType, successSelector, saga: { before, after, error }, reducer }
  * @param {Object} [config.overrides] - { actions, reducer, saga, initialState }
@@ -78,6 +79,20 @@ const BASE_ACTIONS_CONFIG = [
   },
 ];
 
+// "update" -> default config; { name: "update", selector: "profile" } -> default + overrides
+const resolveBaseActions = (baseActions) =>
+  baseActions.map((entry) => {
+    const actionConfig = typeof entry === "string" ? { name: entry } : entry;
+    const defaults = BASE_ACTIONS_CONFIG.find(({ name }) => name === actionConfig.name);
+
+    if (typeof entry === "string" && !defaults) {
+      throw new Error(
+        `Unknown base action "${entry}", expected one of: ${BASE_ACTIONS_CONFIG.map(({ name }) => name).join(", ")}`,
+      );
+    }
+    return defaults ? { ...defaults, ...actionConfig } : actionConfig;
+  });
+
 export const createBaseStore = (config) => {
   const {
     name,
@@ -110,7 +125,7 @@ export const createBaseStore = (config) => {
   // Without an endpoint or an API object there is nothing for CRUD actions to call
   const baseActions =
     providedBaseActions !== undefined
-      ? providedBaseActions
+      ? resolveBaseActions(providedBaseActions)
       : endpoint || providedApi
         ? BASE_ACTIONS_CONFIG
         : [];
@@ -156,16 +171,17 @@ export const createBaseStore = (config) => {
     ...(overrides.actions || {}),
   };
 
-  // 3. Initial state
-  const operationInitialState = {};
-  operationActions.forEach(({ selector, successSelector }) => {
-    if (selector) operationInitialState[selector] = null;
-    operationInitialState[successSelector] = null;
+  // 3. Initial state — base actions too, their selector may be overridden ("profile")
+  const actionInitialState = {};
+  allActions.forEach(({ name: actionName, selector, successSelector }) => {
+    const selectorName = selector !== undefined ? selector : actionName;
+    if (selectorName) actionInitialState[selectorName] = null;
+    actionInitialState[successSelector || `${selectorName || actionName}Success`] = null;
   });
   const initialState = {
     ...createInitialState(),
     ...(envelope ? { message: null } : {}),
-    ...operationInitialState,
+    ...actionInitialState,
     ...(overrides.initialState || {}),
   };
 

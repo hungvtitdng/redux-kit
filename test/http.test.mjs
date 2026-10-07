@@ -157,3 +157,32 @@ test("request interceptor: localeHeader renames the locale header", () => {
 
   assert.deepEqual(request({ headers: {} }).headers, { Localization: "vi" });
 });
+
+test("silent: a request with { silent: true } never notifies success, errors still do", async () => {
+  const notified = [];
+  const errors = [];
+  // Real axios round trip: proves `silent` survives axios' config merge
+  const client = createHttpClient({
+    baseURL: "http://x",
+    notifySuccess: (message) => notified.push(message),
+    notifyError: (message) => errors.push(message),
+    adapter: async (config) => {
+      if (config.url === "/fail") {
+        return Promise.reject(
+          Object.assign(new Error("fail"), {
+            config,
+            response: { status: 403, data: { message: "Denied" }, config },
+          }),
+        );
+      }
+      return { data: { message: "Updated" }, status: 200, statusText: "OK", headers: {}, config };
+    },
+  });
+
+  assert.deepEqual(await client.patch("/me", {}, { silent: true }), { message: "Updated" });
+  await client.patch("/me", {});
+  await client.get("/fail", { silent: true }).catch(() => {});
+
+  assert.deepEqual(notified, ["Updated"]);
+  assert.deepEqual(errors, ["Denied"]);
+});
